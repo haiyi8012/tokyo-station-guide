@@ -3,13 +3,19 @@
 import { Station } from "@/lib/data";
 import { ChevronRight } from "lucide-react";
 import LineBadge from "./LineBadge";
+import OperationStatusBadge from "./OperationStatusBadge";
 
 interface StationListProps {
   stations: Station[];
   onSelect: (station: Station) => void;
+  operationStatus?: "normal" | "delayed" | "unknown";
 }
 
-export default function StationList({ stations, onSelect }: StationListProps) {
+export default function StationList({
+  stations,
+  onSelect,
+  operationStatus = "unknown",
+}: StationListProps) {
   if (stations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -50,6 +56,9 @@ export default function StationList({ stations, onSelect }: StationListProps) {
                 </span>
                 <span className="text-sm text-neutral-500 font-medium">
                   {station.name}
+                </span>
+                <span className="ml-auto flex-shrink-0">
+                  <OperationStatusBadge status={operationStatus} />
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1.5">

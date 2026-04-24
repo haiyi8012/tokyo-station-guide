@@ -1,15 +1,30 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Search, Train, X, MapPin } from "lucide-react";
 import { STATIONS, ALL_LINES, Station, Line } from "@/lib/data";
 import StationCard from "@/components/StationCard";
 import StationList from "@/components/StationList";
+import StationIcon from "@/components/StationIcon";
+
+function parseStationNumberBadge(stationNumberRaw: string | undefined): {
+  alpha: string;
+  num: string;
+} {
+  if (!stationNumberRaw) return { alpha: "", num: "" };
+  const compact = stationNumberRaw.replace(/[^A-Za-z0-9]/g, "");
+  const m = compact.match(/^([A-Za-z]+)(\d+)$/);
+  if (!m) return { alpha: compact.toUpperCase(), num: "" };
+  return { alpha: m[1].toUpperCase(), num: m[2] };
+}
 
 export default function Home() {
   const [query, setQuery] = useState("");
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
+  const [toeiStatus, setToeiStatus] = useState<"normal" | "delayed" | "unknown">(
+    "unknown"
+  );
 
   const toggleLine = (lineId: string) => {
     setSelectedLines((prev) =>
@@ -36,6 +51,42 @@ export default function Home() {
       return matchesQuery && matchesLine;
     });
   }, [query, selectedLines]);
+
+  const lineIdToSampleStationNumber = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const station of STATIONS) {
+      for (const { line, stationNumber } of station.lines) {
+        if (!map.has(line.id)) map.set(line.id, stationNumber);
+      }
+    }
+    return map;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/toei-operation");
+        if (!res.ok) return;
+        const data = (await res.json()) as { ok: boolean; overall?: string };
+        if (cancelled) return;
+        const overall = data.ok ? data.overall : undefined;
+        if (overall === "normal" || overall === "delayed" || overall === "unknown") {
+          setToeiStatus(overall);
+        }
+      } catch {
+        // keep unknown
+      }
+    }
+
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-white font-sans">
@@ -106,36 +157,31 @@ export default function Home() {
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="-mx-6 px-6 overflow-x-auto overflow-y-visible py-2">
+            <div className="flex items-start gap-3">
             {ALL_LINES.map((line: Line) => {
               const isActive = selectedLines.includes(line.id);
+              const { alpha, num } = parseStationNumberBadge(
+                lineIdToSampleStationNumber.get(line.id)
+              );
               return (
                 <button
                   key={line.id}
                   onClick={() => toggleLine(line.id)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold border transition-all duration-150"
-                  style={
-                    isActive
-                      ? {
-                          backgroundColor: line.color,
-                          borderColor: line.color,
-                          color: "#fff",
-                        }
-                      : {
-                          backgroundColor: "transparent",
-                          borderColor: line.color,
-                          color: line.color,
-                        }
-                  }
+                  aria-pressed={isActive}
+                  className="flex-shrink-0"
                 >
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: isActive ? "#fff" : line.color }}
+                  <StationIcon
+                    color={line.color}
+                    alpha={alpha || line.nameJa.slice(0, 1)}
+                    num={num}
+                    nameJa={line.nameJa}
+                    isActive={isActive}
                   />
-                  {line.nameJa}
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
 
@@ -163,7 +209,11 @@ export default function Home() {
         </div>
 
         {/* Station list */}
-        <StationList stations={filteredStations} onSelect={setSelectedStation} />
+        <StationList
+          stations={filteredStations}
+          onSelect={setSelectedStation}
+          operationStatus={toeiStatus}
+        />
 
         {/* Footer */}
         <div className="px-6 py-8 text-center border-t border-neutral-100 mt-4">
